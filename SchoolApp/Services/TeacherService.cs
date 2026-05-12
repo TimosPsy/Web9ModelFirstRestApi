@@ -16,7 +16,8 @@ namespace SchoolApp.Services
         private readonly IEncryptionUtil _encryptionUtil;
         private readonly ILogger<TeacherService> _logger;
 
-        public TeacherService(IUnitOfWork unitOfWork, IMapper mapper, ILogger<TeacherService> logger, IEncryptionUtil encryptionUtil)
+        public TeacherService(IUnitOfWork unitOfWork, IMapper mapper,
+            ILogger<TeacherService> logger, IEncryptionUtil encryptionUtil)
         {
             _encryptionUtil = encryptionUtil;
             _unitOfWork = unitOfWork;
@@ -24,34 +25,27 @@ namespace SchoolApp.Services
             _logger = logger;
         }
 
-        public async Task SignUpUserAsync(TeacherSignupDTO request)
+        public async Task<UserReadOnlyDTO> SignUpUserAsync(TeacherSignupDTO request)
         {
-            Teacher teacher = _mapper.Map<Teacher>(request);
-            User user = _mapper.Map<User>(request);
+            var teacher = _mapper.Map<Teacher>(request);
+            var user = _mapper.Map<User>(request);
 
-            try
+
+            var existingUser = await _unitOfWork.UserRepository.GetUserByUsernameAsync(user.Username);
+
+            if (existingUser != null)
             {
-                User? existingUser = await _unitOfWork.UserRepository.GetUserByUsernameAsync(user.Username);
-
-                if (existingUser != null)
-                {
-                    throw new EntityAlreadyExistsException("User", "User with username " +
-                        existingUser.Username + " already exists");
-                }
-
-                user.Teacher = teacher;
-                user.Password = _encryptionUtil.Encrypt(user.Password);
-                await _unitOfWork.UserRepository.AddAsync(user);
-                await _unitOfWork.TeacherRepository.AddAsync(teacher);
-
-                await _unitOfWork.SaveAsync();
-                _logger.LogInformation("Teacher {Teacher} signed up successfully.", teacher);        // ToDo toString in Teacher
+                throw new EntityAlreadyExistsException("User", $"User with username {existingUser.Username} already exists");
             }
-            catch (EntityAlreadyExistsException ex)
-            {
-                _logger.LogError("Error signing up tecaher {Teacher}. {Message}", teacher, ex.Message);
-                throw;
-            }
+
+            user.Teacher = teacher;
+            user.Password = _encryptionUtil.Encrypt(user.Password);
+            await _unitOfWork.UserRepository.AddAsync(user);
+            //await _unitOfWork.TeacherRepository.AddAsync(teacher); // No need to add teacher separately as it will be added through the User entity
+
+            await _unitOfWork.SaveAsync();
+            _logger.LogInformation("Teacher {Username} signed up successfully.", user.Username);
+            return _mapper.Map<UserReadOnlyDTO>(user);
         }
     }
 }
